@@ -1,0 +1,12 @@
+[package]
+name = "nucle-f302-spwm"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+cortex-m = { version = "0.7.6", features = ["critical-section-single-core"] }
+cortex-m-rt = "0.7"
+
+[dependencies.stm32f3]
+version = "0.16.0"
+features = ["stm32f302"]
