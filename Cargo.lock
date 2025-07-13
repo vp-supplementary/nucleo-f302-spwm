@@ -82,7 +82,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8d5439c4ad607c3c23abf66de8c8bf57ba8adcd1f129e699851a6e43935d339d"
 
 [[package]]
-name = "nucle-f302-spwm"
+name = "nucleo-f302-spwm"
 version = "0.1.0"
 dependencies = [
  "cortex-m",
@@ -181,3 +181,7 @@ checksum = "de437e2a6208b014ab52972a27e59b33fa2920d3e00fe05026167a1c509d19cc"
 dependencies = [
  "vcell",
 ]
+
+[[package]]
+name = "xtask"
+version = "0.1.0"

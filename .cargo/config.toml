@@ -1,11 +1,2 @@
-[build]
-target = "thumbv7em-none-eabihf"
-
-[target.thumbv7em-none-eabihf]
-# runner = "arm-none-eabi-gdb"
-# Chip can be set via `--chip STM32F303VCTx` or `export PROBE_RUN_CHIP=STM32F303VCTx`
-# runner = "probe-rs run --chip STM32F303VCTx --connect-under-reset"
-rustflags = [
-#    "-C", "link-arg=--nmagic",
-#    "-C", "link-arg=-Tlink.x",
-]
+[alias]
+xtask = "run --package xtask --"
