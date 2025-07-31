@@ -10,3 +10,8 @@ rustflags = [
     #    "-C", "link-arg=--nmagic",
     #    "-C", "link-arg=-Tlink.x",
 ]
+
+# With HSI clock opt-level=0 produces a very slow application which
+# has 10 kHz interrupt frequency instead of the expected 100 kHz
+[profile.dev]
+opt-level = 1
