@@ -4,8 +4,12 @@
 use core::cell::UnsafeCell;
 use core::ops::Not;
 use core::panic::PanicInfo;
+use cortex_m::peripheral::NVIC;
 use cortex_m_rt::entry;
-use stm32f3::stm32f302::gpioc::moder::MODE;
+use stm32f3::stm32f302::{Interrupt, gpioc::moder::MODE, interrupt};
+
+use spwm::Spwm;
+use stm32f3::stm32f302::rcc::cfgr::SW;
 
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
@@ -13,35 +17,46 @@ fn panic(_info: &PanicInfo) -> ! {
 }
 
 // PC: 9, 8, 6, 5
-
-struct PeripheralSingletone {
-    holder: UnsafeCell<Option<stm32f3::stm32f302::Peripherals>>,
+struct UnsafeSingleton<T> {
+    holder: UnsafeCell<Option<T>>,
 }
 
-unsafe impl Sync for PeripheralSingletone {}
-
-impl PeripheralSingletone {
-    fn set(&self, peripherals: Option<stm32f3::stm32f302::Peripherals>) {
+impl<T> UnsafeSingleton<T> {
+    fn set(&self, peripherals: Option<T>) {
         unsafe {
             *self.holder.get() = peripherals;
         }
     }
 
-    fn get_peripheral(&self) -> &stm32f3::stm32f302::Peripherals {
+    fn get_peripheral(&self) -> &T {
         unsafe { self.holder.get().as_ref().unwrap().as_ref().unwrap() }
     }
 }
 
-static PERIPHERAL_SINGLETON: PeripheralSingletone = PeripheralSingletone {
+unsafe impl<T> Sync for UnsafeSingleton<T> {}
+
+static PERIPHERAL_SINGLETON: UnsafeSingleton<stm32f3::stm32f302::Peripherals> = UnsafeSingleton {
+    holder: UnsafeCell::new(None),
+};
+static CORE_PERIPHERAL_SINGLETON: UnsafeSingleton<cortex_m::Peripherals> = UnsafeSingleton {
+    holder: UnsafeCell::new(None),
+};
+static TIM15_SOFTWARE_PWM: UnsafeSingleton<Spwm> = UnsafeSingleton {
     holder: UnsafeCell::new(None),
 };
 
-#[entry]
-fn main() -> ! {
-    unsafe {
-        PERIPHERAL_SINGLETON.set(Some(stm32f3::stm32f302::Peripherals::steal()));
+fn clock_init() {
+    let peripheral = PERIPHERAL_SINGLETON.get_peripheral();
+
+    if peripheral.RCC.cr().read().hsirdy().is_not_ready() {
+        peripheral.RCC.cr().modify(|_, w| w.hsion().set_bit());
+        while peripheral.RCC.cr().read().hsirdy().is_not_ready() {}
     }
 
+    peripheral.RCC.cfgr().modify(|_, w| w.sw().variant(SW::Hsi));
+}
+
+fn gpio_init() {
     PERIPHERAL_SINGLETON
         .get_peripheral()
         .RCC
@@ -52,26 +67,63 @@ fn main() -> ! {
         .GPIOC
         .moder()
         .modify(|_, w| w.moder9().set(MODE::Output as u8));
+}
 
-    let mut toggle = false;
+fn tim15_init() {
+    let peripheral = PERIPHERAL_SINGLETON.get_peripheral();
+
+    peripheral
+        .RCC
+        .apb2enr()
+        .modify(|_, w| w.tim15en().set_bit());
+
+    // enable CC1IE interrupt
+    peripheral.TIM15.dier().write(|w| w.uie().set_bit());
+    // 8 MHz / 80 = 100 kHz
+    peripheral
+        .TIM15
+        .arr()
+        .write(|w| unsafe { w.arr().bits(80) });
+    // enable TIM15
+    peripheral.TIM15.cr1().write(|w| w.cen().set_bit());
+    unsafe { NVIC::unmask(Interrupt::TIM1_BRK_TIM15) };
+}
+
+#[entry]
+fn main() -> ! {
+    unsafe {
+        PERIPHERAL_SINGLETON.set(Some(stm32f3::stm32f302::Peripherals::steal()));
+        CORE_PERIPHERAL_SINGLETON.set(Some(cortex_m::Peripherals::steal()));
+    }
+
+    clock_init();
+    gpio_init();
+    tim15_init();
+
+    // let mut toggle = false;
 
     loop {
-        for _ in 0..50 {}
+        cortex_m::asm::wfi();
+    }
+}
 
-        if toggle.not() {
-            PERIPHERAL_SINGLETON
-                .get_peripheral()
-                .GPIOC
-                .bsrr()
-                .write(|w| w.bs9().set_bit());
-        } else {
-            PERIPHERAL_SINGLETON
-                .get_peripheral()
-                .GPIOC
-                .bsrr()
-                .write(|w| w.br9().set_bit());
-        }
+#[interrupt]
+fn TIM1_BRK_TIM15() {
+    static mut TOGGLE: bool = false;
+    let peripheral = PERIPHERAL_SINGLETON.get_peripheral();
+    let tim15 = &peripheral.TIM15;
+    let gpioc = &peripheral.GPIOC;
 
-        toggle = toggle.not();
+    tim15.sr().write(|w| w.uif().clear_bit());
+
+    let current_state = *TOGGLE;
+    *TOGGLE = current_state.not();
+
+    if current_state {
+        gpioc.bsrr().write(|w| w.bs9().set_bit());
+        // gpioc.bsrr().write(|w| w.br9().set_bit());
+    } else {
+        // gpioc.bsrr().write(|w| w.bs9().set_bit());
+        gpioc.bsrr().write(|w| w.br9().set_bit());
     }
 }
