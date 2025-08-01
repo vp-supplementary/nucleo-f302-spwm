@@ -2,14 +2,14 @@
 #![no_main]
 
 use core::cell::UnsafeCell;
-use core::ops::Not;
 use core::panic::PanicInfo;
 use cortex_m::peripheral::NVIC;
 use cortex_m_rt::entry;
 use stm32f3::stm32f302::{Interrupt, gpioc::moder::MODE, interrupt};
 
 use spwm::{Spwm, SpwmState};
-use stm32f3::stm32f302::rcc::cfgr::SW;
+use stm32f3::stm32f302::flash::acr::LATENCY;
+use stm32f3::stm32f302::rcc::cfgr::{HPRE, PLLMUL, PLLSRC, PPRE1, SW};
 
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
@@ -54,6 +54,31 @@ fn clock_init() {
     }
 
     peripheral.RCC.cfgr().modify(|_, w| w.sw().variant(SW::Hsi));
+    peripheral
+        .FLASH
+        .acr()
+        .modify(|_, w| w.latency().variant(LATENCY::Ws2));
+    peripheral.RCC.cfgr().modify(|_, w| {
+        w.pllsrc()
+            .variant(PLLSRC::HsiDiv2)
+            .pllmul()
+            .variant(PLLMUL::Mul16)
+    });
+    peripheral.RCC.cr().modify(|_, w| w.pllon().set_bit());
+
+    while peripheral.RCC.cr().read().pllrdy().is_not_ready() {}
+
+    peripheral
+        .RCC
+        .cfgr()
+        .modify(|_, w| w.hpre().variant(HPRE::Div1).sw().variant(SW::Pll));
+
+    while !peripheral.RCC.cfgr().read().sws().is_pll() {}
+
+    peripheral
+        .RCC
+        .cfgr()
+        .modify(|_, w| w.ppre1().variant(PPRE1::Div2).ppre2().variant(PPRE1::Div1));
 }
 
 fn gpio_init() {
@@ -80,11 +105,11 @@ fn tim15_init() {
 
     // enable CC1IE interrupt
     peripheral.TIM15.dier().write(|w| w.uie().set_bit());
-    // 8 MHz / 80 = 100 kHz
+    // 64 MHz / 640 = 100 kHz
     peripheral
         .TIM15
         .arr()
-        .write(|w| unsafe { w.arr().bits(80) });
+        .write(|w| unsafe { w.arr().bits(640) });
     // enable TIM15
     peripheral.TIM15.cr1().write(|w| w.cen().set_bit());
     unsafe { NVIC::unmask(Interrupt::TIM1_BRK_TIM15) };
@@ -144,7 +169,7 @@ fn main() -> ! {
     let _ = TIM15_SOFTWARE_PWM.get_ref().set_channel_duty_cycle(0, 90);
     let _ = TIM15_SOFTWARE_PWM.get_ref().enable(0);
     // channel #1
-    let _ = TIM15_SOFTWARE_PWM.get_ref().set_channel_frequency(1, 240);
+    let _ = TIM15_SOFTWARE_PWM.get_ref().set_channel_frequency(1, 1000);
     let _ = TIM15_SOFTWARE_PWM
         .get_ref()
         .set_channel_on_off_callback(1, pc8_on_off_callback);
