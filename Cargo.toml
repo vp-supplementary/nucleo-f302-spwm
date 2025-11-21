@@ -1,3 +1,3 @@
 [workspace]
 resolver = "3"
-members = ["f302-spwm", "xtask"]
+members = ["nucleo-f302-spwm", "xtask"]
