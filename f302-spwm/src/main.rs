@@ -7,7 +7,7 @@ use cortex_m::peripheral::NVIC;
 use cortex_m_rt::entry;
 use stm32f3::stm32f302::{Interrupt, gpioc::moder::MODE, interrupt};
 
-use spwm::{Spwm, SpwmState};
+use spwm::{ChannelId, Spwm, SpwmState};
 use stm32f3::stm32f302::flash::acr::LATENCY;
 use stm32f3::stm32f302::rcc::cfgr::{HPRE, PLLMUL, PLLSRC, PPRE1, SW};
 
@@ -38,6 +38,15 @@ impl<T> UnsafeSingleton<T> {
     fn get_ref(&self) -> &T {
         unsafe { self.holder.get().as_ref().unwrap().as_ref().unwrap() }
     }
+
+    fn with_mut<R>(&self, f: impl FnOnce(&mut T) -> R) -> R {
+        unsafe {
+            let slot = (*self.holder.get())
+                .as_mut()
+                .expect("UnsafeSingleton::with_mut called before set");
+            f(slot)
+        }
+    }
 }
 
 unsafe impl<T> Sync for UnsafeSingleton<T> {}
@@ -48,7 +57,7 @@ static PERIPHERAL_SINGLETON: UnsafeSingleton<stm32f3::stm32f302::Peripherals> = 
 static CORE_PERIPHERAL_SINGLETON: UnsafeSingleton<cortex_m::Peripherals> = UnsafeSingleton {
     holder: UnsafeCell::new(None),
 };
-static TIM15_SOFTWARE_PWM: UnsafeSingleton<Spwm> = UnsafeSingleton {
+static TIM15_SOFTWARE_PWM: UnsafeSingleton<Spwm<4>> = UnsafeSingleton {
     holder: UnsafeCell::new(None),
 };
 
@@ -148,90 +157,92 @@ fn gpio_toggle(state: &SpwmState, channel: &AppPwmChannel) {
     }
 }
 
+fn create_pwm_channels() {
+    TIM15_SOFTWARE_PWM.with_mut(|pwm| {
+        // 100 kHz = 10 us
+        // 10 Hz = 100 ms = 100000 us
+        // 100 kHz / 10 Hz = 10000 tick -> 10000 ticks * 10 us = 100000 us = 100 ms
+        // channel #0
+        let frequency = 10;
+        let channel_0 = pwm
+            .create_channel()
+            .freq_hz(frequency)
+            .duty_cycle(90)
+            .on_off_callback(|state| {
+                gpio_toggle(state, &AppPwmChannel::Channel0);
+            })
+            .period_callback(period_callback)
+            .build();
+        // channel #1
+        let frequency = 1000;
+        let channel_1 = pwm
+            .create_channel()
+            .freq_hz(frequency)
+            .duty_cycle(55)
+            .on_off_callback(|state| {
+                gpio_toggle(state, &AppPwmChannel::Channel1);
+            })
+            .period_callback(period_callback)
+            .build();
+        // channel #2
+        let frequency = 500;
+        let channel_2 = pwm
+            .create_channel()
+            .freq_hz(frequency)
+            .duty_cycle(50)
+            .on_off_callback(|state| {
+                gpio_toggle(state, &AppPwmChannel::Channel2);
+            })
+            .period_callback(period_callback)
+            .build();
+        // channel #3
+        let frequency = 250;
+        let channel_3 = pwm
+            .create_channel()
+            .freq_hz(frequency)
+            .duty_cycle(64)
+            .on_off_callback(|state| {
+                gpio_toggle(state, &AppPwmChannel::Channel3);
+            })
+            .period_callback(period_callback)
+            .build();
+
+        let mut arr: [ChannelId; 4] = [0; 4];
+        let result = pwm.register_channel(channel_0.unwrap());
+        assert!(result.is_ok(), "Failed to register channel #0");
+        arr[0] = result.unwrap();
+        let result = pwm.register_channel(channel_1.unwrap());
+        assert!(result.is_ok(), "Failed to register channel #1");
+        arr[1] = result.unwrap();
+        let result = pwm.register_channel(channel_2.unwrap());
+        assert!(result.is_ok(), "Failed to register channel #2");
+        arr[2] = result.unwrap();
+        let result = pwm.register_channel(channel_3.unwrap());
+        assert!(result.is_ok(), "Failed to register channel #3");
+        arr[3] = result.unwrap();
+
+        for channel_id in arr {
+            let channel = pwm.get_channel(channel_id);
+
+            if let Some(channel) = channel {
+                let result = channel.enable();
+                assert!(result.is_ok(), "Failed to enable channel");
+            }
+        }
+    });
+}
+
 #[entry]
 fn main() -> ! {
+    let spwm: Spwm<4> = Spwm::new(100_000);
+
     unsafe {
         PERIPHERAL_SINGLETON.set(Some(stm32f3::stm32f302::Peripherals::steal()));
         CORE_PERIPHERAL_SINGLETON.set(Some(cortex_m::Peripherals::steal()));
-        TIM15_SOFTWARE_PWM.set(Some(Spwm::new(100_000, None, None)));
+        TIM15_SOFTWARE_PWM.set(Some(spwm));
     }
 
-    // 100 kHz = 10 us
-    // 10 Hz = 100 ms = 100000 us
-    // 100 kHz / 10 Hz = 10000 tick -> 10000 ticks * 10 us = 100000 us = 100 ms
-    // channel #0
-    let channel = 0;
-    let frequency = 10;
-    let _ = TIM15_SOFTWARE_PWM
-        .get_ref()
-        .set_channel_frequency(channel, frequency);
-    let _ = TIM15_SOFTWARE_PWM
-        .get_ref()
-        .set_channel_on_off_callback(channel, |state| {
-            gpio_toggle(state, &AppPwmChannel::Channel0);
-        });
-    let _ = TIM15_SOFTWARE_PWM
-        .get_ref()
-        .set_channel_period_callback(channel, period_callback);
-    let _ = TIM15_SOFTWARE_PWM
-        .get_ref()
-        .set_channel_duty_cycle(channel, 90);
-    let _ = TIM15_SOFTWARE_PWM.get_ref().enable(channel);
-    // channel #1
-    let channel = 1;
-    let frequency = 1000;
-    let _ = TIM15_SOFTWARE_PWM
-        .get_ref()
-        .set_channel_frequency(channel, frequency);
-    let _ = TIM15_SOFTWARE_PWM
-        .get_ref()
-        .set_channel_on_off_callback(channel, |state| {
-            gpio_toggle(state, &AppPwmChannel::Channel1);
-        });
-    let _ = TIM15_SOFTWARE_PWM
-        .get_ref()
-        .set_channel_period_callback(channel, period_callback);
-    let _ = TIM15_SOFTWARE_PWM
-        .get_ref()
-        .set_channel_duty_cycle(channel, 50);
-    let _ = TIM15_SOFTWARE_PWM.get_ref().enable(channel);
-    // channel #2
-    let channel = 2;
-    let frequency = 500;
-    let _ = TIM15_SOFTWARE_PWM
-        .get_ref()
-        .set_channel_frequency(channel, frequency);
-    let _ = TIM15_SOFTWARE_PWM
-        .get_ref()
-        .set_channel_on_off_callback(channel, |state| {
-            gpio_toggle(state, &AppPwmChannel::Channel2);
-        });
-    let _ = TIM15_SOFTWARE_PWM
-        .get_ref()
-        .set_channel_period_callback(channel, period_callback);
-    let _ = TIM15_SOFTWARE_PWM
-        .get_ref()
-        .set_channel_duty_cycle(channel, 50);
-    let _ = TIM15_SOFTWARE_PWM.get_ref().enable(channel);
-    // channel #3
-    let channel = 3;
-    let frequency = 250;
-    let _ = TIM15_SOFTWARE_PWM
-        .get_ref()
-        .set_channel_frequency(channel, frequency);
-    let _ = TIM15_SOFTWARE_PWM
-        .get_ref()
-        .set_channel_on_off_callback(channel, |state| {
-            gpio_toggle(state, &AppPwmChannel::Channel3);
-        });
-    let _ = TIM15_SOFTWARE_PWM
-        .get_ref()
-        .set_channel_period_callback(channel, period_callback);
-    let _ = TIM15_SOFTWARE_PWM
-        .get_ref()
-        .set_channel_duty_cycle(channel, 64);
-    let _ = TIM15_SOFTWARE_PWM.get_ref().enable(channel);
-
+    create_pwm_channels();
     clock_init();
     gpio_init();
     tim15_init();
