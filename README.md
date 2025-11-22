@@ -1,3 +1,5 @@
+![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/vp-supplementary/nucleo-f302-spwm/ci.yml)
+
 # Nucleo F302R8 SPWM example
 
 This example shows how to use the [spwm](https://github.com/vpetrigo/spwm) crate to have a software controlled PWM
