@@ -167,18 +167,18 @@ fn create_pwm_channels() {
         let channel_0 = pwm
             .create_channel()
             .freq_hz(frequency)
-            .duty_cycle(90)
+            .duty_cycle(50)
             .on_off_callback(|state| {
                 gpio_toggle(state, &AppPwmChannel::Channel0);
             })
             .period_callback(period_callback)
             .build();
         // channel #1
-        let frequency = 1000;
+        let frequency = 50;
         let channel_1 = pwm
             .create_channel()
             .freq_hz(frequency)
-            .duty_cycle(55)
+            .duty_cycle(10)
             .on_off_callback(|state| {
                 gpio_toggle(state, &AppPwmChannel::Channel1);
             })
