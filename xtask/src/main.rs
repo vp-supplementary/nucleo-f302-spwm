@@ -29,9 +29,8 @@ fn try_main() -> Result<(), DynError> {
 }
 
 fn build() -> Result<(), DynError> {
-    let app_name = "f302-spwm";
+    let app_name = "nucleo-f302-spwm";
     let app_dir = project_root().join(app_name);
-    println!("{:?}", env::var("CARGO"));
 
     let status = Command::new(CARGO)
         .current_dir(app_dir)
