@@ -1,0 +1,57 @@
+name: 'app build'
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  clippy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+          targets: thumbv7em-none-eabihf
+          components: clippy
+      - name: Run clippy on sntpc crate and all examples
+        run: cargo clippy --bin nucleo-f302-spwm --target thumbv7em-none-eabihf -- -W clippy::all -W clippy::pedantic
+
+  clippy-nightly:
+    runs-on: ubuntu-latest
+    container:
+      image: rust:latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly
+          targets: thumbv7em-none-eabihf
+          components: clippy
+      - name: Run clippy for async feature with nightly
+        run: cargo +nightly clippy --bin nucleo-f302-spwm --target thumbv7em-none-eabihf -- -W clippy::all -W clippy::pedantic
+
+  check-format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          components: rustfmt
+      - name: Check formatting
+        run: cargo fmt --check
+
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: thumbv7em-none-eabihf
+      - name: Build application
+        run: cargo xtask build
