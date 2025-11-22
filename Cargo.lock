@@ -136,6 +136,8 @@ checksum = "388a1df253eca08550bef6c72392cfe7c30914bf41df5269b68cbd6ff8f570a3"
 [[package]]
 name = "spwm"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bed733082e4ba6b3193be68759e225fb8f3551f7a6dfa767e4f75920a683535b"
 
 [[package]]
 name = "stm32f3"
